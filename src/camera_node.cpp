@@ -128,10 +128,16 @@ public:
     while(rclcpp::ok() && !this->request_shutdown_){
       cv::Mat left_frame, right_frame;
 
-      if (!this->left_camera_->read(left_frame) || !this->right_camera_->read(right_frame)) {
+      if (!this->left_camera_->grab() || !this->right_camera_->grab()) {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), (*this->get_clock()),  5000, "Got empty frame from camera");
         continue;
       }
+
+      auto left_call = std::async(std::launch::async, &cv::VideoCapture::retrieve, this->left_camera_, left_frame, 0);
+      auto right_call = std::async(std::launch::async, &cv::VideoCapture::retrieve, this->right_camera_, right_frame, 0);
+
+      left_call.wait(); right_call.wait();
+
       RCLCPP_WARN_STREAM(this->get_logger(), "Publishing image! " << frame_count_++);
 
       std_msgs::msg::Header header = std_msgs::msg::Header();
@@ -178,8 +184,8 @@ private:
   sensor_msgs::msg::CameraInfo::SharedPtr left_camera_info_msg_;
   sensor_msgs::msg::CameraInfo::SharedPtr right_camera_info_msg_;
 
-  std::unique_ptr<cv::VideoCapture> left_camera_;
-  std::unique_ptr<cv::VideoCapture> right_camera_;
+  std::shared_ptr<cv::VideoCapture> left_camera_;
+  std::shared_ptr<cv::VideoCapture> right_camera_;
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<image_transport::CameraPublisher> left_publisher_;
@@ -192,7 +198,6 @@ int main(int argc, char * argv[])
   rclcpp::init(argc, argv);
 
   std::shared_ptr<Imx219_83_Publisher> node = std::make_shared<Imx219_83_Publisher>();
-  registered_nodes.push_back(node);
 
   rclcpp::on_shutdown(std::bind(&Imx219_83_Publisher::shutdown, node));
 
