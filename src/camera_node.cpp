@@ -92,14 +92,25 @@ public:
     this->right_camera_info_msg_ = std::make_shared<sensor_msgs::msg::CameraInfo>(
       this->right_camera_manager_->getCameraInfo());
 
+    rmw_qos_profile_t qos_profile = {
+      .history = RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT,
+      .depth = 5,
+      // .reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+      .reliability = RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT,
+      .durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
+      .liveliness = RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC,
+    };
+
     this->left_publisher_ = std::make_shared<image_transport::CameraPublisher>(
       this,
-      "left/image_raw"
+      "left/image_raw",
+      qos_profile
     );
 
     this->right_publisher_ = std::make_shared<image_transport::CameraPublisher>(
       this,
-      "right/image_raw"
+      "right/image_raw",
+      qos_profile
     );
 
     RCLCPP_INFO_STREAM(
@@ -120,25 +131,44 @@ public:
       ), cv::CAP_GSTREAMER
     );
 
+    rclcpp::on_shutdown(std::bind(&Imx219_83_Publisher::shutdown, this));
     RCLCPP_INFO_STREAM(this->get_logger(), "Camera streams created");
   }
 
   void spin()
   {
-    while(rclcpp::ok() && !this->request_shutdown_){
+    while (rclcpp::ok() && !this->request_shutdown_) {
       cv::Mat left_frame, right_frame;
 
       if (!this->left_camera_->grab() || !this->right_camera_->grab()) {
-        RCLCPP_ERROR_THROTTLE(this->get_logger(), (*this->get_clock()),  5000, "Got empty frame from camera");
+        RCLCPP_ERROR_THROTTLE(
+          this->get_logger(),
+          (*this->get_clock()), 5000, "Got empty frame from camera");
         continue;
       }
 
-      auto left_call = std::async(std::launch::async, &cv::VideoCapture::retrieve, this->left_camera_, left_frame, 0);
-      auto right_call = std::async(std::launch::async, &cv::VideoCapture::retrieve, this->right_camera_, right_frame, 0);
+      auto left_call = std::async(
+        std::launch::async,
+        [this, &left_frame] {
+          return this->right_camera_->retrieve(left_frame);
+        });
 
-      left_call.wait(); right_call.wait();
+      auto right_call = std::async(
+        std::launch::async,
+        [this, &right_frame] {
+          return this->right_camera_->retrieve(right_frame);
+        });
 
-      RCLCPP_WARN_STREAM(this->get_logger(), "Publishing image! " << frame_count_++);
+      if (!left_call.get() || !right_call.get()) {
+        RCLCPP_ERROR_THROTTLE(
+          this->get_logger(),
+          (*this->get_clock()), 5000, "Error while retrieving images");
+        continue;
+      }
+
+      RCLCPP_INFO_STREAM_THROTTLE(
+        this->get_logger(),
+        (*this->get_clock()), (60 * 1000), "Publishing image! " << frame_count_++);
 
       std_msgs::msg::Header header = std_msgs::msg::Header();
       header.frame_id = this->frame_id_;
@@ -148,19 +178,19 @@ public:
 
       this->left_publisher_->publish(*this->left_image_msg_, *this->left_camera_info_msg_);
       this->right_publisher_->publish(*this->right_image_msg_, *this->right_camera_info_msg_);
+
+      // rclcpp::spin_some(this->shared_from_this());
     }
   }
 
   void shutdown()
   {
     this->request_shutdown_ = 1;
-    RCLCPP_WARN_STREAM(this->get_logger(), "Releasing cameras!");
     this->left_camera_->release();
     this->right_camera_->release();
   }
 
 private:
-
   // Signal-safe flag for whether shutdown is requested
   sig_atomic_t volatile request_shutdown_ = 0;
   int16_t left_camera_id_;
@@ -198,8 +228,6 @@ int main(int argc, char * argv[])
   rclcpp::init(argc, argv);
 
   std::shared_ptr<Imx219_83_Publisher> node = std::make_shared<Imx219_83_Publisher>();
-
-  rclcpp::on_shutdown(std::bind(&Imx219_83_Publisher::shutdown, node));
 
   node->spin();
 
