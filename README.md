@@ -2,6 +2,8 @@
 
 This package provides a driver to use IMX219-83 stereo camera with a Jetson platform with ROS 2. It uses OpenCV alongside a GStreamer pipeline to get the images from the camera connected through 2 CSI connections.
 
+Official docs for this camera can be found [here](https://www.waveshare.com/wiki/IMX219-83_Stereo_Camera). No information about hardware syncronization is given, so this package tries to sync both images via software with OpenCV's `grab()/retrieve()`
+
 To launch the node, just run
 
 ```bash
@@ -44,6 +46,7 @@ Currently, the code is only implemented in a standalone node. A plugin version m
 ## ToDo
 
 - Provide plugin interface for camera node
+- Implement IMU interface
 - Implement new fancy [NITROS transport](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros)
 
 ## Acknowledgments
