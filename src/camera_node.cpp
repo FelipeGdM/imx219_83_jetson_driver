@@ -52,13 +52,13 @@ public:
     this->declare_parameter<std::string>("left_camera_name", "left_camera");
     this->declare_parameter<std::string>(
       "left_camera_info_url",
-      "file:///${ROS_HOME}/camera_info/front/left.ini"
+      "file:///${ROS_HOME}/camera_info/stereo/left.ini"
     );
 
     this->declare_parameter<std::string>("right_camera_name", "right_camera");
     this->declare_parameter<std::string>(
       "right_camera_info_url",
-      "file:///${ROS_HOME}/camera_info/front/right.ini"
+      "file:///${ROS_HOME}/camera_info/stereo/right.ini"
     );
 
     this->get_parameter("left_camera_id", this->left_camera_id_);
